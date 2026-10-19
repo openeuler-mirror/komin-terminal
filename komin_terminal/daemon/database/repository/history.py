@@ -101,6 +101,33 @@ class InteractionRepository(BaseRepository[InteractionModel]):
         with self._manager.session() as session:
             return list(session.scalars(stmt))
 
+    def list_by_chat(
+        self, chat_id: uuid.UUID, *, offset: int = 0, limit: int = 50
+    ) -> Sequence[InteractionModel]:
+        """List the user's live interactions within one chat.
+
+        Args:
+            chat_id: Parent chat id.
+            offset: Number of records to skip.
+            limit: Maximum number of records to return.
+
+        Returns:
+            The matching interactions, newest first.
+        """
+        chat_history_ids = select(HistoryModel.id).where(
+            HistoryModel.user_id == self._user_id,
+            HistoryModel.chat_id == chat_id,
+            HistoryModel.deleted_at.is_(None),
+        )
+        stmt = (
+            self._base_query()
+            .where(InteractionModel.history_id.in_(chat_history_ids))
+            .order_by(InteractionModel.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        with self._manager.session() as session:
+            return list(session.scalars(stmt))
     def append_interaction(
         self,
         history_id: uuid.UUID,
