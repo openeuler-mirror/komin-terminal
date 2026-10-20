@@ -186,10 +186,6 @@ make check                       # ruff + mypy strict + 735 测试
 | `make check` | 依次执行 lint、typecheck、test |
 | `make clean` | 清理构建与缓存产物 |
 
-## 文档索引
-
-- [架构设计](docs/komin-terminal-架构设计.md)
-
 ## 许可证
 
 [Apache License 2.0](LICENSE)
