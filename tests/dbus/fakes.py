@@ -8,6 +8,7 @@ executor with a programmable event sequence.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any
@@ -92,6 +93,7 @@ class FakeBus:
         self._caller_uids: dict[str, int] = {}
         self._subscriptions: dict[tuple[str, str, str], list[Callable[..., None]]] = {}
         self._proxies: dict[tuple[str, str], Any] = {}
+        self._run_event = threading.Event()
 
     def set_caller_uid(self, connection_name: str, uid: int) -> None:
         """Register the Unix UID reported for a connection name.
@@ -168,9 +170,14 @@ class FakeBus:
         """Register a callback for a signal."""
         self._subscriptions.setdefault((path, interface, member), []).append(callback)
 
+    def run_forever(self) -> None:
+        """Block until :meth:`disconnect` releases the in-memory loop."""
+        self._run_event.wait()
+
     def disconnect(self) -> None:
         """Mark the bus as disconnected."""
         self.disconnected = True
+        self._run_event.set()
 
 
 class FakeQueryExecutor:
