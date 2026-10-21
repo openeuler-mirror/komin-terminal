@@ -38,7 +38,13 @@ class ConfigLoader:
         """
         self._env = env if env is not None else get_environment()
 
-    def load(self, cli_overrides: Mapping[str, Any] | None = None) -> KominConfig:
+    def load(
+        self,
+        cli_overrides: Mapping[str, Any] | None = None,
+        *,
+        user_file: Path | None = None,
+        system_file: Path | None = None,
+    ) -> KominConfig:
         """Load, merge and validate the configuration from every layer.
 
         Merge order: ``DEFAULTS`` <- system-level file <- user-level file <-
@@ -46,9 +52,18 @@ class ConfigLoader:
         user-level file whose permissions differ from ``0600`` only emits a
         warning.
 
+        When ``user_file`` or ``system_file`` is supplied the loader runs in
+        exclusive mode: only the explicitly provided files are read (in
+        system-then-user precedence order) and the environment-resolved
+        default paths are ignored entirely. This backs ``komind --config``.
+
         Args:
             cli_overrides: Optional highest-precedence overrides, typically
                 derived from command-line arguments.
+            user_file: Optional explicit user-level configuration file;
+                switches the loader into exclusive mode.
+            system_file: Optional explicit system-level configuration file;
+                switches the loader into exclusive mode.
 
         Returns:
             The fully merged and validated configuration object.
@@ -62,13 +77,24 @@ class ConfigLoader:
         """
         data: Mapping[str, Any] = DEFAULTS
 
-        system_file = self._env.get_system_config_file()
-        user_file = self._env.get_user_config_file()
-        for path in (system_file, user_file):
+        candidates: list[tuple[Path, bool]]
+        if user_file is not None or system_file is not None:
+            candidates = []
+            if system_file is not None:
+                candidates.append((system_file, False))
+            if user_file is not None:
+                candidates.append((user_file, True))
+        else:
+            candidates = [
+                (self._env.get_system_config_file(), False),
+                (self._env.get_user_config_file(), True),
+            ]
+
+        for path, is_user_file in candidates:
             if not path.is_file():
                 _LOGGER.debug("Configuration file not found, skipping: %s", path)
                 continue
-            if path == user_file:
+            if is_user_file:
                 self._check_user_file_permissions(path)
             data = merge(data, self._load_yaml(path))
 
