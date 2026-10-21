@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import threading
-
 from komin_terminal.config import KominConfig
 from komin_terminal.constants import (
     get_dbus_chat_namespace,
@@ -43,7 +41,6 @@ class KominDBusServer:
         self._configured_bus = bus
         self._bus: BusAbstraction | None = None
         self._db: DatabaseManager | None = None
-        self._stop_event = threading.Event()
         self._started = False
 
     @property
@@ -89,7 +86,7 @@ class KominDBusServer:
         bus.request_name(get_dbus_history_namespace())
         bus.request_name(get_dbus_user_namespace())
         _LOGGER.info("komind D-Bus server is serving")
-        self._stop_event.wait()
+        bus.run_forever()
 
     def stop(self) -> None:
         """Stop the server; idempotent.
@@ -97,7 +94,6 @@ class KominDBusServer:
         Releases the main loop, disposes the database and disconnects the
         bus.
         """
-        self._stop_event.set()
         if self._db is not None:
             self._db.dispose()
             self._db = None

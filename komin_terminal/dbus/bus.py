@@ -128,6 +128,15 @@ class BusAbstraction(Protocol):
         """Release bus resources; idempotent."""
         ...
 
+    def run_forever(self) -> None:
+        """Block on the bus main loop until :meth:`disconnect` is called.
+
+        Production backends run the GLib main loop here so that incoming
+        method calls are dispatched; in-memory fakes simply block until
+        released.
+        """
+        ...
+
 
 class SupportsDBusSpec(Protocol):
     """Objects publishable by :class:`SystemBusBackend`."""
@@ -340,6 +349,43 @@ class SystemBusBackend:
         self._handlers: list[Any] = []
         self._subscriptions: list[int] = []
         self._disconnected = False
+        self._loop: Any = None
+
+    def run_forever(self) -> None:
+        """Run the GLib main loop so bus method calls are dispatched.
+
+        Blocks until :meth:`disconnect` quits the loop. SIGTERM and SIGINT
+        are wired into the loop via ``GLib.unix_signal_add`` because Python
+        signal handlers do not run while the C main loop is blocking.
+
+        Raises:
+            DBusCommunicationError: When the GLib bindings are unavailable.
+        """
+        try:
+            from gi.repository import GLib  # noqa: PLC0415 - deferred by design
+        except ImportError as exc:
+            raise DBusCommunicationError(
+                "GLib bindings (pygobject) are not available", detail=str(exc)
+            ) from exc
+        import signal  # noqa: PLC0415
+
+        loop = GLib.MainLoop()
+        self._loop = loop
+
+        def _quit_on_signal() -> bool:
+            loop.quit()
+            return False
+
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, _quit_on_signal)
+
+        loop.run()
+
+    def _quit_loop(self) -> None:
+        """Stop the main loop started by :meth:`run_forever`; idempotent."""
+        if self._loop is not None:
+            self._loop.quit()
+            self._loop = None
 
     def publish_object(self, path: str, obj: object) -> None:
         """Publish ``obj`` under ``path`` with caller injection.
@@ -438,10 +484,12 @@ class SystemBusBackend:
         self._subscriptions.append(int(subscription))
 
     def disconnect(self) -> None:
-        """Unsubscribe signals, unregister objects and disconnect (idempotent)."""
+        """Quit the main loop, unsubscribe signals, unregister objects and
+        disconnect (idempotent)."""
         if self._disconnected:
             return
         self._disconnected = True
+        self._quit_loop()
         for subscription in self._subscriptions:
             self._bus.connection.signal_unsubscribe(subscription)
         self._subscriptions.clear()
