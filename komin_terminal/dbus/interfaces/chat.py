@@ -91,8 +91,8 @@ class ChatInterface:
         return InterfaceSpec(
             interface_name=get_dbus_chat_namespace(),
             methods=(
-                MethodSpec("AskQuestion", "ask_question", ("s", "s", "as"), "s"),
-                MethodSpec("CreateChat", "create_chat", ("s", "s"), "s"),
+                MethodSpec("AskQuestion", "ask_question", ("s", "s", "as", "s"), "s"),
+                MethodSpec("CreateChat", "create_chat", ("s", "s", "s"), "s"),
                 MethodSpec("DeleteChat", "delete_chat", ("s",), "b"),
                 MethodSpec("ListChats", "list_chats", (), "aa{sv}"),
                 MethodSpec("GetChat", "get_chat", ("s",), "a{sv}"),
@@ -105,7 +105,7 @@ class ChatInterface:
         )
 
     def ask_question(
-        self, question: str, chat_id: str, attachments: list[str], caller: str
+        self, question: str, chat_id: str, attachments: list[str], model: str, caller: str
     ) -> str:
         """Start a streamed question and return its answer id immediately.
 
@@ -117,6 +117,8 @@ class ChatInterface:
             question: The user's question text.
             chat_id: Chat to attach the exchange to; empty for one-shot.
             attachments: Paths of text files attached as context.
+            model: Optional model override for this call; empty falls back
+                to the chat-pinned model, then the daemon default.
             caller: D-Bus connection name of the caller.
 
         Returns:
@@ -129,7 +131,9 @@ class ChatInterface:
         uid = self._auth.check_access(caller)
         user_id = self._sessions.get_user_id(uid)
         chat = self._resolve_chat(user_id, chat_id)
-        model = chat.model if chat is not None and chat.model else self._default_model
+        model = model or (
+            chat.model if chat is not None and chat.model else self._default_model
+        )
         answer_id = str(uuid.uuid4())
         thread = threading.Thread(
             target=self._run_stream,
@@ -142,12 +146,13 @@ class ChatInterface:
         thread.start()
         return answer_id
 
-    def create_chat(self, name: str, description: str, caller: str) -> str:
+    def create_chat(self, name: str, description: str, model: str, caller: str) -> str:
         """Create a chat owned by the caller.
 
         Args:
             name: Chat name.
             description: Free-form description.
+            model: Optional model pinned to the chat; empty means unset.
             caller: D-Bus connection name of the caller.
 
         Returns:
@@ -155,7 +160,9 @@ class ChatInterface:
         """
         uid = self._auth.check_access(caller)
         user_id = self._sessions.get_user_id(uid)
-        chat = ChatRepository(self._db, user_id).add(name=name, description=description)
+        chat = ChatRepository(self._db, user_id).add(
+            name=name, description=description, model=model
+        )
         return str(chat.id)
 
     def delete_chat(self, chat_id: str, caller: str) -> bool:
