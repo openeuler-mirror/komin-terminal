@@ -128,6 +128,32 @@ class InteractionRepository(BaseRepository[InteractionModel]):
         )
         with self._manager.session() as session:
             return list(session.scalars(stmt))
+
+    def get_owner_history_id(self, interaction_id: uuid.UUID) -> uuid.UUID | None:
+        """Resolve the history owning an interaction, including deleted ones.
+
+        Unlike :meth:`get`, this lookup is not scoped to live histories so
+        that a soft-deleted exchange can still be restored. User isolation
+        is enforced through the owning history's ``user_id``.
+
+        Args:
+            interaction_id: Interaction identifier.
+
+        Returns:
+            The owning history id when the interaction exists and belongs
+            to this user, ``None`` otherwise.
+        """
+        stmt = (
+            select(HistoryModel.id)
+            .join(InteractionModel, InteractionModel.history_id == HistoryModel.id)
+            .where(
+                InteractionModel.id == interaction_id,
+                HistoryModel.user_id == self._user_id,
+            )
+        )
+        with self._manager.session() as session:
+            return cast("uuid.UUID | None", session.scalar(stmt))
+
     def append_interaction(
         self,
         history_id: uuid.UUID,

@@ -56,6 +56,7 @@ class HistoryInterface:
             methods=(
                 MethodSpec("GetHistory", "get_history", ("s", "i", "i"), "aa{sv}"),
                 MethodSpec("ClearHistory", "clear_history", ("s",), "b"),
+                MethodSpec("RestoreHistory", "restore_history", ("s",), "b"),
                 MethodSpec("GetInteraction", "get_interaction", ("s",), "a{sv}"),
             ),
         )
@@ -125,6 +126,36 @@ class HistoryInterface:
             if history_repo.soft_delete(row.id):
                 deleted = True
         return deleted
+
+    def restore_history(self, interaction_id: str, caller: str) -> bool:
+        """Restore the history record owning an interaction.
+
+        Clearing history soft-deletes the owning history record, which makes
+        its interactions disappear from every listing. This method resolves
+        the owning history of ``interaction_id`` (including soft-deleted
+        histories) and clears the soft-delete marker.
+
+        Args:
+            interaction_id: An interaction id, as shown in history tables.
+            caller: D-Bus connection name of the caller.
+
+        Returns:
+            ``True`` when a deleted history was restored; ``False`` when
+            no deleted history exists for this interaction and user.
+
+        Raises:
+            KeyError: When the id is malformed.
+        """
+        uid = self._auth.check_access(caller)
+        user_id = self._sessions.get_user_id(uid)
+        try:
+            parsed = uuid.UUID(interaction_id)
+        except ValueError as exc:
+            raise KeyError(f"invalid interaction id {interaction_id!r}") from exc
+        history_id = InteractionRepository(self._db, user_id).get_owner_history_id(parsed)
+        if history_id is None:
+            return False
+        return HistoryRepository(self._db, user_id).restore(history_id)
 
     def get_interaction(self, interaction_id: str, caller: str) -> dict[str, Any]:
         """Fetch one interaction owned by the caller.
