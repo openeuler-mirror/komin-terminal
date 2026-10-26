@@ -44,8 +44,10 @@ class _RecordingStub:
             raise self.error
         return "user-id"
 
-    def AskQuestion(self, question: str, chat_id: str, attachments: list[str]) -> str:
-        self.calls.append(("AskQuestion", (question, chat_id, attachments)))
+    def AskQuestion(
+        self, question: str, chat_id: str, attachments: list[str], model: str = ""
+    ) -> str:
+        self.calls.append(("AskQuestion", (question, chat_id, attachments, model)))
         if self.error is not None:
             raise self.error
         return "answer-id"
@@ -74,9 +76,9 @@ def test_snake_case_dispatches_to_camel_case_member() -> None:
     stub = _RecordingStub()
     bus.set_proxy(get_dbus_chat_namespace(), get_dbus_object_path_chat(), stub)
     client = KominClient(bus=bus)
-    answer_id = client.chat.ask_question("q", "cid", ["a.txt"])
+    answer_id = client.chat.ask_question("q", "cid", ["a.txt"], "m1")
     assert answer_id == "answer-id"
-    assert stub.calls == [("AskQuestion", ("q", "cid", ["a.txt"]))]
+    assert stub.calls == [("AskQuestion", ("q", "cid", ["a.txt"], "m1"))]
 
 
 def test_is_daemon_available_true_when_user_service_answers() -> None:

@@ -32,9 +32,12 @@ def _ask(
     question: str = "how do I check load?",
     chat_id: str = "",
     attachments: list[str] | None = None,
+    model: str = "",
     caller: str = CALLER_A,
 ) -> str:
-    answer_id = chat_interface.ask_question(question, chat_id, attachments or [], caller)
+    answer_id = chat_interface.ask_question(
+        question, chat_id, attachments or [], model, caller
+    )
     _await_terminal(bus, answer_id)
     return answer_id
 
@@ -46,7 +49,7 @@ def test_ask_question_streams_and_persists(
     db_manager: DatabaseManager,
     sessions: UserSessionManager,
 ) -> None:
-    chat_id = chat_interface.create_chat("ops", "ops chat", CALLER_A)
+    chat_id = chat_interface.create_chat("ops", "ops chat", "", CALLER_A)
     executor.stream_events = [
         StreamEvent(kind="chunk", content="use "),
         StreamEvent(kind="chunk", content="uptime"),
@@ -96,7 +99,7 @@ def test_stream_error_event_emits_stream_error(
 
 
 def test_chat_crud_and_soft_delete(chat_interface: ChatInterface, bus: FakeBus) -> None:
-    chat_id = chat_interface.create_chat("alpha", "first chat", CALLER_A)
+    chat_id = chat_interface.create_chat("alpha", "first chat", "", CALLER_A)
 
     listed = chat_interface.list_chats(CALLER_A)
     assert len(listed) == 1
@@ -115,11 +118,11 @@ def test_chat_crud_and_soft_delete(chat_interface: ChatInterface, bus: FakeBus) 
 
 
 def test_cross_user_access_denied(chat_interface: ChatInterface, bus: FakeBus) -> None:
-    chat_id = chat_interface.create_chat("private", "", CALLER_A)
+    chat_id = chat_interface.create_chat("private", "", "", CALLER_A)
     with pytest.raises(AccessDeniedError):
         chat_interface.get_chat(chat_id, CALLER_B)
     with pytest.raises(AccessDeniedError):
-        chat_interface.ask_question("q", chat_id, [], CALLER_B)
+        chat_interface.ask_question("q", chat_id, [], "", CALLER_B)
     assert chat_interface.list_chats(CALLER_B) == []
 
 
@@ -158,9 +161,9 @@ def test_missing_attachment_emits_stream_error(
 
 def test_nonexistent_chat_raises_key_error(chat_interface: ChatInterface) -> None:
     with pytest.raises(KeyError):
-        chat_interface.ask_question("q", str(uuid.uuid4()), [], CALLER_A)
+        chat_interface.ask_question("q", str(uuid.uuid4()), [], "", CALLER_A)
     with pytest.raises(KeyError):
-        chat_interface.ask_question("q", "not-a-uuid", [], CALLER_A)
+        chat_interface.ask_question("q", "not-a-uuid", [], "", CALLER_A)
 
 
 def test_history_summary_via_llm_and_persisted(
@@ -170,7 +173,7 @@ def test_history_summary_via_llm_and_persisted(
     db_manager: DatabaseManager,
     sessions: UserSessionManager,
 ) -> None:
-    chat_id = chat_interface.create_chat("long", "", CALLER_A)
+    chat_id = chat_interface.create_chat("long", "", "", CALLER_A)
     first = _ask(chat_interface, bus, question="first question", chat_id=chat_id)
     assert first
 
@@ -213,7 +216,7 @@ def test_summary_input_truncated_to_recent_rounds(
     db_manager: DatabaseManager,
     sessions: UserSessionManager,
 ) -> None:
-    chat_id = chat_interface.create_chat("busy", "", CALLER_A)
+    chat_id = chat_interface.create_chat("busy", "", "", CALLER_A)
     user_id = sessions.get_user_id(UID_A)
     history = HistoryRepository(db_manager, user_id).add(chat_id=uuid.UUID(chat_id))
     interactions = InteractionRepository(db_manager, user_id)
@@ -229,3 +232,27 @@ def test_summary_input_truncated_to_recent_rounds(
     assert summary_prompt.count("用户:") == 20
     assert "question 24" in summary_prompt
     assert "question 4" not in summary_prompt
+
+
+def test_explicit_model_overrides_default(
+    chat_interface: ChatInterface,
+    bus: FakeBus,
+    executor: FakeQueryExecutor,
+    db_manager: DatabaseManager,
+    sessions: UserSessionManager,
+) -> None:
+    _ask(chat_interface, bus, model="custom-model")
+    assert executor.queries[-1].model == "custom-model"
+    user_id = sessions.get_user_id(UID_A)
+    interaction = InteractionRepository(db_manager, user_id).filter()[0]
+    assert interaction.model == "custom-model"
+
+
+def test_create_chat_stores_optional_model(
+    chat_interface: ChatInterface, bus: FakeBus
+) -> None:
+    del bus
+    pinned = chat_interface.create_chat("pinned", "desc", "gpt-x", CALLER_A)
+    assert chat_interface.get_chat(pinned, CALLER_A)["model"] == "gpt-x"
+    plain = chat_interface.create_chat("plain", "", "", CALLER_A)
+    assert chat_interface.get_chat(plain, CALLER_A)["model"] == ""
