@@ -85,7 +85,7 @@ def daemon(xdg_env: Path) -> Iterator[tuple[Any, ...]]:
 
 def _ask(bus: FakeBus, question: str) -> str:
     proxy = bus.get_proxy(get_dbus_chat_namespace(), get_dbus_object_path_chat())
-    return str(proxy.AskQuestion(question, "", []))
+    return str(proxy.AskQuestion(question, "", [], ""))
 
 
 def test_ask_question_streams_and_persists(daemon: tuple[Any, ...]) -> None:

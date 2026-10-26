@@ -118,3 +118,36 @@ def test_get_interaction_unknown_id(history_interface: HistoryInterface) -> None
         history_interface.get_interaction(str(uuid.uuid4()), CALLER_A)
     with pytest.raises(KeyError):
         history_interface.get_interaction("not-a-uuid", CALLER_A)
+def test_restore_history_after_clear(
+    history_interface: HistoryInterface,
+    db_manager: DatabaseManager,
+    sessions: UserSessionManager,
+) -> None:
+    user_id = sessions.get_user_id(UID_A)
+    interaction_id = _seed_interaction(
+        db_manager, user_id, chat_id=None, question="precious", response="answer"
+    )
+
+    assert history_interface.clear_history("", CALLER_A) is True
+    assert history_interface.get_history("", 0, 50, CALLER_A) == []
+
+    assert history_interface.restore_history(str(interaction_id), CALLER_A) is True
+    restored = history_interface.get_history("", 0, 50, CALLER_A)
+    assert [entry["question"] for entry in restored] == ["precious"]
+    assert history_interface.restore_history(str(interaction_id), CALLER_A) is False
+
+
+def test_restore_history_unknown_or_cross_user(
+    history_interface: HistoryInterface,
+    db_manager: DatabaseManager,
+    sessions: UserSessionManager,
+) -> None:
+    user_a = sessions.get_user_id(UID_A)
+    interaction_id = _seed_interaction(
+        db_manager, user_a, chat_id=None, question="mine", response="answer"
+    )
+
+    assert history_interface.restore_history(str(uuid.uuid4()), CALLER_A) is False
+    assert history_interface.restore_history(str(interaction_id), CALLER_B) is False
+    with pytest.raises(KeyError):
+        history_interface.restore_history("not-a-uuid", CALLER_A)
