@@ -100,6 +100,12 @@ def _add_global_options(parser: argparse.ArgumentParser, *, with_version: bool) 
         default=None,
         help="指定本次使用的模型（空则沿用 daemon 默认）",
     )
+    parser.add_argument(
+        "--with-output",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="把最近一次终端录制输出并入问答上下文（仅单次问答）",
+    )
     parser.add_argument("--no-spinner", action="store_true", help="禁用思考中动画")
     parser.add_argument("--debug", action="store_true", help="启用调试日志")
 
