@@ -25,6 +25,8 @@ from komin_terminal.rendering.animation import Spinner
 from komin_terminal.rendering.markdown import MarkdownRenderer
 from komin_terminal.rendering.renderers import Renderers
 from komin_terminal.rendering.stream import StreamRenderer
+from komin_terminal.terminal.parser import TerminalParser
+from komin_terminal.terminal.reader import get_last_recording
 from komin_terminal.utils.environment import get_environment
 from komin_terminal.utils.files import write_atomic
 
@@ -158,6 +160,35 @@ def _compose_question(question: str, attachment_paths: list[str]) -> str:
     return "\n\n".join(parts)
 
 
+def _terminal_output_block(renderers: Renderers) -> str:
+    """Build the recorded-output context block for ``--with-output``.
+
+    The newest recording is read, cleaned with :class:`TerminalParser` and
+    wrapped in a ``[终端输出]`` block. Missing or unreadable recordings
+    degrade to a warning and an empty block so the question proceeds.
+
+    Args:
+        renderers: Feedback renderers for warnings.
+
+    Returns:
+        The context block, or ``""`` when no usable recording exists.
+    """
+    path = get_last_recording()
+    if path is None:
+        renderers.warning("没有可用的终端录制内容，继续普通问答")
+        return ""
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        renderers.warning(f"无法读取录制文件 {path}，继续普通问答")
+        return ""
+    cleaned = TerminalParser().parse(raw).strip()
+    if not cleaned:
+        renderers.warning("最近的录制内容为空，继续普通问答")
+        return ""
+    return "[终端输出]\n" + cleaned
+
+
 @command("chat", "与 AI 对话：单次问答或交互式会话（默认命令）")
 @argument("-i", "--interactive", action="store_true", help="进入交互式多轮会话")
 @argument("--name", metavar="N", default=None, help="与会话 -i 联用，创建命名会话")
@@ -208,12 +239,18 @@ def run_chat(
     if args.switch_chat_id:
         return _run_switch_chat(args.switch_chat_id, client, renderers)
     if args.interactive:
+        if getattr(args, "with_output", False):
+            renderers.warning("--with-output 仅在单次问答时生效，已忽略")
         return _run_interactive(args, client, renderers, renderer, spinner_enabled)
     question = " ".join(args.question).strip()
     if not question:
         renderers.error(_MISSING_QUESTION_MESSAGE)
         return 1
     composed = _compose_question(question, args.attachments or [])
+    if getattr(args, "with_output", False):
+        terminal_block = _terminal_output_block(renderers)
+        if terminal_block:
+            composed = "\n\n".join([composed, terminal_block])
     return _ask_once(
         composed, "", args.model or "", client, renderers, renderer, spinner_enabled
     )
