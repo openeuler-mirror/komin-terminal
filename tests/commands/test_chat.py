@@ -158,3 +158,57 @@ def test_no_spinner_disables_spinner(
     code = cli_main(["chat", "--no-spinner", "q"])
     assert code == 0
     assert started and started[0]["enabled"] is False
+    monkeypatch.setattr(chat_module, "Spinner", SpySpinner)
+    code = cli_main(["chat", "--no-spinner", "q"])
+    assert code == 0
+    assert started and started[0]["enabled"] is False
+
+
+def test_with_output_merges_cleaned_recording(
+    cli_main: Any,
+    fake_client: FakeKominClient,
+    xdg_env: Path,
+) -> None:
+    """`--with-output` appends the ANSI-cleaned newest recording to the question."""
+    from komin_terminal.utils.environment import Environment
+
+    records_dir = Environment().get_user_cache_dir() / "recordings"
+    records_dir.mkdir(parents=True, exist_ok=True)
+    recording = records_dir / "terminal-20260821-100000-000001.log"
+    recording.write_text("行A\x1b[31m红色\x1b[0m\n行B", encoding="utf-8")
+
+    code = cli_main(["为什么报错", "--with-output"])
+    assert code == 0
+    question = fake_client.chat.ask_calls[0]["question"]
+    assert question.startswith("为什么报错")
+    assert "[终端输出]" in question
+    assert "行A红色" in question
+    assert "\x1b[31m" not in question
+
+
+def test_with_output_without_recording_warns_and_proceeds(
+    cli_main: Any,
+    fake_client: FakeKominClient,
+    xdg_env: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without a recording `--with-output` warns and asks the plain question."""
+    code = cli_main(["问题", "--with-output"])
+    assert code == 0
+    assert "没有可用的终端录制内容" in capsys.readouterr().err
+    question = fake_client.chat.ask_calls[0]["question"]
+    assert question.startswith("问题")
+    assert "[终端输出]" not in question
+
+
+def test_with_output_ignored_in_interactive_mode(
+    cli_main: Any,
+    fake_client: FakeKominClient,
+    scripted_input: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Combining `-i` with `--with-output` warns and ignores the flag."""
+    scripted_input(["/exit"])
+    code = cli_main(["chat", "-i", "--with-output"])
+    assert code == 0
+    assert "--with-output 仅在单次问答时生效" in capsys.readouterr().err
