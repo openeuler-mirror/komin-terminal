@@ -1,0 +1,61 @@
+.TH KOMIND 8 "2026-08-21" "komin-terminal 1.0.0" "System Manager's Manual"
+.SH NAME
+komind \- Komin Terminal Daemon (D-Bus system service)
+.SH SYNOPSIS
+.B komind
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B komind
+is the foreground daemon for Komin-Terminal. It publishes three D-Bus services
+(chat, history, user) on the system bus and processes AI queries from the
+.BR km (1)
+CLI.
+.PP
+In production, the daemon is activated by systemd as a
+.B Type=dbus
+service. It can also be run directly for development and testing.
+.SH OPTIONS
+.TP
+.BI \-\-config " PATH"
+Load the specified configuration file exclusively, replacing the default
+system and user configuration paths. Useful for testing or running the
+daemon with a custom configuration.
+.TP
+.B \-\-debug
+Enable debug-level logging (equivalent to \fBlogging.level=debug\fR in the
+configuration file).
+.TP
+.B \-\-version
+Show program version and exit.
+.SH SIGNALS
+.TP
+.B SIGTERM, SIGINT
+Graceful shutdown: the daemon stops the D-Bus server, disposes of the
+database connection and exits cleanly.
+.SH FILES
+.TP
+.I /etc/komin/config.yaml
+System-wide configuration file.
+.TP
+.I /var/lib/komin/komin.db
+SQLite database for chat history persistence.
+.TP
+.I /var/lib/komin/
+Runtime data directory (created by tmpfiles.d).
+.SH ENVIRONMENT
+.TP
+.B KOMIN_DBUS_VENDOR
+D-Bus vendor segment (default: \fBexample\fR in development,
+replaced at build time by RPM \fB%{_vendor}\fR macro).
+.TP
+.B KOMIN_SYSTEM_CONFIG_DIR
+Override the system configuration directory.
+.TP
+.B KOMIN_SQLITE_PATH
+Override the SQLite database path.
+.SH SEE ALSO
+.BR km (1),
+.BR systemd.service (5),
+.BR dbus-daemon (1)
+.SH BUGS
+Report bugs at https://github.com/komin/komin-terminal/issues

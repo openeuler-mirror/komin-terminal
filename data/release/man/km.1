@@ -1,0 +1,178 @@
+.TH KM 1 "2026-08-21" "komin-terminal 1.0.0" "User Commands"
+.SH NAME
+km \- AI-driven command line assistant for Linux system administration
+.SH SYNOPSIS
+.B km
+[\fIOPTIONS\fR]
+.B chat
+[\fICHAT-OPTIONS\fR]
+[\fIQUESTION\fR]
+.br
+.B km
+[\fIOPTIONS\fR]
+.B history
+[\fIHISTORY-OPTIONS\fR]
+.br
+.B km
+[\fIOPTIONS\fR]
+.B shell
+[\fISHELL-OPTIONS\fR]
+.SH DESCRIPTION
+.B km
+is the CLI entry point for Komin-Terminal, an AI-driven command line assistant
+for Linux system administrators. It communicates with the
+.BR komind (8)
+daemon over D-Bus to deliver streaming AI responses, session management and
+terminal output capture.
+.PP
+When invoked without an explicit subcommand, the default is
+.BR chat .
+.SH OPTIONS
+.SS Global Options
+.TP
+.BI \-\-model " M"
+Override the default model for this invocation.
+.TP
+.BI \-\-with\-output
+Include the most recent terminal recording output in the question context
+(single-shot mode only).
+.TP
+.B \-\-no\-spinner
+Disable the spinner animation during backend queries.
+.TP
+.B \-\-debug
+Enable debug-level logging.
+.TP
+.B \-\-version
+Show program version and exit.
+.SS chat Subcommand
+.B km chat
+[\fIOPTIONS\fR]
+[\fIQUESTION\fR]
+.PP
+Single-shot question or interactive session (default subcommand).
+.TP
+.BR \-i ", " \-\-interactive
+Enter interactive multi-turn session mode.
+.TP
+.BI \-\-name " N"
+Create a named session (used with \fB-i\fR).
+.TP
+.BI \-\-description " D"
+Session description (used with \fB--name\fR).
+.TP
+.BR \-a " " \fIFILE\fR ", " \-\-attachment " " \fIFILE\fR
+Attach a text file as context (repeatable, each ≤ 1 MiB).
+.TP
+.B \-\-list
+List all chat sessions.
+.TP
+.BI \-\-delete " CHAT_ID"
+Soft-delete a chat session.
+.TP
+.BI \-\-switch " CHAT_ID"
+Switch the default session.
+.TP
+.I QUESTION
+One or more words forming the question to ask.
+.SS history Subcommand
+.B km history
+[\fIOPTIONS\fR]
+.PP
+Manage Q&A history: list, clear, or restore.
+.TP
+.BI \-\-filter " K"
+Filter history by keyword (matches question and answer).
+.TP
+.BI \-\-since " DATE"
+Show entries from this date onward (inclusive, YYYY-MM-DD).
+.TP
+.BI \-\-until " DATE"
+Show entries up to this date (inclusive, YYYY-MM-DD).
+.TP
+.BI \-\-page " N"
+Page number, starting from 1 (default: 1).
+.TP
+.BI \-\-page\-size " N"
+Entries per page (default: 20).
+.TP
+.B \-\-clear
+Soft-delete all history entries.
+.TP
+.B \-\-yes
+Skip the confirmation prompt for \fB--clear\fR.
+.TP
+.BI \-\-restore " HISTORY_ID"
+Restore a soft-deleted history entry.
+.SS shell Subcommand
+.B km shell
+[\fISHELL-OPTIONS\fR]
+.PP
+Terminal output capture: record an interactive session or show the last
+recording.
+.TP
+.B \-\-enable\-record
+Record one interactive shell session (PTY).
+.TP
+.B \-\-show\-last
+Display the most recent recording (ANSI sequences stripped).
+.SH EXAMPLES
+.SS Single-Shot Question
+.nf
+km 如何查看系统负载？
+.fi
+.PP
+.nf
+km 查看磁盘使用情况 --model gpt-4o-mini
+.fi
+.SS Pipe Integration
+.nf
+dmesg | km "分析内核日志中的错误"
+.fi
+.PP
+.nf
+df -h | km "哪些分区使用率超过 80%"
+.fi
+.SS File Attachment
+.nf
+km -a /var/log/syslog -a nginx.conf "分析 Nginx 访问日志配置问题"
+.fi
+.SS Interactive Session
+.nf
+km -i --name debug "排查网络连通性问题"
+.fi
+.SS History Management
+.nf
+km history --filter "docker"
+km history --since 2026-01-01 --until 2026-08-01
+km history --clear --yes
+.fi
+.SH FILES
+.TP
+.I /etc/komin/config.yaml
+System-wide configuration file (\fB%config(noreplace)\fR in RPM).
+.TP
+.I ~/.config/komin/
+Per-user configuration directory (XDG).
+.TP
+.I ~/.local/share/komin/
+Per-user data directory (XDG) including default session state.
+.TP
+.I /var/lib/komin/komin.db
+SQLite database file for history persistence.
+.SH ENVIRONMENT
+.TP
+.B KOMIN_DBUS_VENDOR
+D-Bus vendor segment (default: \fBexample\fR in development,
+replaced at build time by RPM \fB%{_vendor}\fR macro).
+.TP
+.B KOMIN_SYSTEM_CONFIG_DIR
+Override the system configuration directory.
+.TP
+.B KOMIN_SQLITE_PATH
+Override the SQLite database path.
+.SH SEE ALSO
+.BR komind (8),
+.BR km (1)
+.SH BUGS
+Report bugs at https://github.com/komin/komin-terminal/issues

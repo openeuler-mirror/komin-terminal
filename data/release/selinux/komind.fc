@@ -1,0 +1,2 @@
+/usr/bin/komind -- gen_context(system_u:object_r:komind_exec_t,s0)
+/var/lib/komin(/.*)?  --  gen_context(system_u:object_r:komind_var_lib_t,s0)
