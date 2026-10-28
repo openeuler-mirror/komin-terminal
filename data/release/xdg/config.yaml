@@ -1,0 +1,58 @@
+# Komin-Terminal system-wide configuration
+# This file is installed as /etc/komin/config.yaml and marked %config(noreplace)
+# in the RPM spec. Edit as needed; changes take effect on daemon restart.
+
+backend:
+  # URL of the OpenAI-compatible API endpoint (required)
+  url: "https://api.example.com/v1"
+  # API key for authentication (required) — replace with real key or use
+  # @systemd-credential:<name> for systemd-credential based injection
+  api_key: "sk-REPLACE-ME"
+  # Default model for single-shot and session queries (required)
+  model: "gpt-4"
+  # Optional list of available models for /model switching in interactive sessions
+  models:
+    - "gpt-4"
+    - "gpt-4o-mini"
+  # Request timeout in seconds (1-600, default 120)
+  timeout: 120
+  # Maximum retries on transient errors (0-10, default 3)
+  max_retries: 3
+  # Optional extra HTTP headers sent with every backend request
+  extra_headers: {}
+  # Optional HTTP(S) proxy settings
+  # proxy:
+  #   http: "http://proxy.example.com:8080"
+  #   https: "http://proxy.example.com:8080"
+  # Optional TLS material for mTLS or custom CA
+  # tls:
+  #   ca_bundle: "/etc/komin/ca-bundle.crt"
+  #   client_cert: "/etc/komin/client.crt"
+  #   client_key: "/etc/komin/client.key"
+
+database:
+  # Persistence backend: sqlite (default), mysql, or postgresql
+  type: "sqlite"
+  # SQLite-specific settings (required when type is sqlite)
+  sqlite:
+    path: "/var/lib/komin/komin.db"
+  # MySQL/PostgreSQL settings (ignored when type is sqlite)
+  # host: "localhost"
+  # port: 5432
+  # name: "komin"
+  # user: "komin"
+  # password: ""
+
+display:
+  # Theme name or absolute path to a YAML theme file (default: "default")
+  theme: "default"
+  # Show a spinner animation during backend queries (default: true)
+  spinner: true
+  # Maximum terminal width for markdown rendering; 0 = auto-detect (default: 0)
+  max_width: 0
+
+logging:
+  # Log level: debug, info, warning, error (default: info)
+  level: "info"
+  # Enable audit logging for backend requests (default: true)
+  audit: true

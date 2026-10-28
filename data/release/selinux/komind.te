@@ -1,0 +1,32 @@
+policy_module(komind, 1.0.0)
+
+require {
+    type unconfined_t;
+    type system_dbus_t;
+    class tcp_socket { name_connect };
+    class dir { search getattr read write add_name remove_name };
+    class file { getattr read write create unlink };
+    class unix_stream_socket connectto;
+    class service dbus_send;
+}
+
+# komind_t type declaration
+type komind_t;
+
+# Allow komind to connect to the system D-Bus
+allow komind_t system_dbus_t:unix_stream_socket connectto;
+
+# Allow komind to own the D-Bus service name (via dbus daemon policy)
+
+# Allow komind to read/write /var/lib/komin (komind_var_lib_t)
+files_type(komind_var_lib_t)
+allow komind_t komind_var_lib_t:dir { search getattr read write add_name remove_name };
+allow komind_t komind_var_lib_t:file { getattr read write create unlink };
+
+# Allow komind to make outbound TCP connections (backend API)
+allow komind_t self:tcp_socket { name_connect };
+
+# Allow komind to write to journald via /dev/log
+allow komind_t system_journal:dir { search getattr read };
+allow komind_t system_journal:file { getattr read append };
+allow komind_t init_t:unix_stream_socket connectto;

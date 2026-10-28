@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=com.{vendor}.komin.history
+Exec=/usr/bin/komind
+User=root

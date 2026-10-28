@@ -1,0 +1,18 @@
+## <summary>Policy for komind - Komin Terminal Daemon</summary>
+
+########################################
+## <desc>
+##   <p>Allow komind to connect to the system D-Bus.</p>
+## </desc>
+/interface(`komind_dbus_chat',`
+    allow $1 system_dbus_t:unix_stream_socket connectto;
+')
+
+########################################
+## <desc>
+##   <p>Allow komind to write to /var/lib/komin.</p>
+## </desc>
+/interface(`komind_write_var_lib',`
+    allow $1 komind_var_lib_t:dir { search getattr read write add_name remove_name };
+    allow $1 komind_var_lib_t:file { getattr read write create unlink };
+')
