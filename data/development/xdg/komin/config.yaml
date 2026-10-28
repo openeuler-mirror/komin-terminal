@@ -1,0 +1,27 @@
+# Komin-Terminal development configuration
+# This file is for local development and testing only.
+# Vendor segment defaults to "example" via KOMIN_DBUS_VENDOR env var.
+
+backend:
+  url: "http://localhost:11434/v1"
+  api_key: "sk-REPLACE-ME"
+  model: "qwen2.5:latest"
+  models:
+    - "qwen2.5:latest"
+    - "qwen2.5-coder:latest"
+  timeout: 120
+  max_retries: 3
+
+database:
+  type: "sqlite"
+  sqlite:
+    path: "/tmp/komin-dev.db"
+
+display:
+  theme: "default"
+  spinner: true
+  max_width: 0
+
+logging:
+  level: "debug"
+  audit: true

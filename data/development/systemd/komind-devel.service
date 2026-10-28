@@ -1,0 +1,17 @@
+[Unit]
+Description=Komin Terminal Daemon (Development)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=dbus
+BusName=com.{vendor}.komin
+ExecStart=/usr/bin/komind
+Restart=on-failure
+RestartSec=5s
+User=root
+Group=root
+Environment=KOMIN_DBUS_VENDOR=example
+
+[Install]
+WantedBy=multi-user.target
