@@ -1,0 +1,17 @@
+# Komin-Terminal development theme example
+# All 13 required semantic keys must be present.
+# Values are space-separated style/color tokens (case-insensitive, -/_ interchangeable).
+
+heading: "bold cyan"
+code: "green"
+code_block: "green"
+inline_code: "yellow"
+link: "underline blue"
+emphasis: "italic"
+strong: "bold"
+table_border: "dim"
+info: "cyan"
+warning: "yellow"
+error: "red"
+notification: "magenta"
+spinner: "cyan"
