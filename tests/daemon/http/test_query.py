@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Callable
 
 import httpx
 import pytest
 from komin_terminal.constants import SYSTEM_PROMPT
 from komin_terminal.daemon.http import ChatQuery, QueryExecutor, RetryAdapter, build_messages
-from komin_terminal.exceptions import AuthenticationError, BackendError
+from komin_terminal.exceptions import AuthenticationError, BackendError, NetworkError
 
 _TransportFactory = Callable[..., httpx.MockTransport]
 
@@ -131,6 +132,109 @@ def test_ask_stream_maps_http_error(fake_openai_transport: _TransportFactory) ->
     with pytest.raises(AuthenticationError):
         list(executor.ask_stream(_query()))
 
+
+def test_ask_stream_delivers_chunks_progressively() -> None:
+    """The first chunk reaches the consumer before the backend finishes.
+
+    The fake backend blocks before producing the second chunk; the test
+    asserts the consumer already received chunk one while chunk two does not
+    exist yet. Pure event synchronization, no sleeps.
+    """
+    produced: list[str] = []
+    release = threading.Event()
+
+    def generate() -> object:
+        produced.append("c0")
+        yield b'data: {"choices":[{"delta":{"content":"c0"}}]}\n\n'
+        assert release.wait(timeout=5), "test timed out waiting for release"
+        produced.append("c1")
+        yield b'data: {"choices":[{"delta":{"content":"c1"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=generate(), request=request)
+
+    executor = QueryExecutor(
+        _client(httpx.MockTransport(handler)), RetryAdapter(sleep=_noop_sleep)
+    )
+    events = executor.ask_stream(_query())
+
+    first = next(events)
+    assert (first.kind, first.content) == ("chunk", "c0")
+    assert produced == ["c0"], "chunk two produced before chunk one was consumed"
+
+    release.set()
+    rest = [(event.kind, event.content) for event in events]
+    assert rest == [("chunk", "c1"), ("done", "")]
+
+
+def test_ask_stream_mid_stream_failure_maps_error_without_retry() -> None:
+    calls = {"n": 0}
+
+    def generate() -> object:
+        yield b'data: {"choices":[{"delta":{"content":"c0"}}]}\n\n'
+        raise httpx.ReadError("connection dropped mid-stream")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, content=generate(), request=request)
+
+    executor = QueryExecutor(
+        _client(httpx.MockTransport(handler)), RetryAdapter(sleep=_noop_sleep)
+    )
+
+    with pytest.raises(NetworkError):
+        list(executor.ask_stream(_query()))
+
+    assert calls["n"] == 1, "mid-stream failures must not be retried"
+
+
+def test_ask_stream_closes_response_on_completion() -> None:
+    responses: list[httpx.Response] = []
+
+    def generate() -> object:
+        yield b'data: {"choices":[{"delta":{"content":"c0"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = httpx.Response(200, content=generate(), request=request)
+        responses.append(response)
+        return response
+
+    executor = QueryExecutor(
+        _client(httpx.MockTransport(handler)), RetryAdapter(sleep=_noop_sleep)
+    )
+
+    events = list(executor.ask_stream(_query()))
+
+    assert [event.kind for event in events] == ["chunk", "done"]
+    assert responses[0].is_closed, "ask_stream must close the response when done"
+
+
+def test_ask_stream_closes_response_when_abandoned() -> None:
+    responses: list[httpx.Response] = []
+
+    def generate() -> object:
+        yield b'data: {"choices":[{"delta":{"content":"c0"}}]}\n\n'
+        yield b'data: {"choices":[{"delta":{"content":"c1"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = httpx.Response(200, content=generate(), request=request)
+        responses.append(response)
+        return response
+
+    executor = QueryExecutor(
+        _client(httpx.MockTransport(handler)), RetryAdapter(sleep=_noop_sleep)
+    )
+
+    events = executor.ask_stream(_query())
+    first = next(events)
+    assert (first.kind, first.content) == ("chunk", "c0")
+
+    events.close()
+
+    assert responses[0].is_closed, "abandoning the stream must close the response"
 
 def test_ask_emits_audit_metadata_without_secrets(
     fake_openai_transport: _TransportFactory, caplog: pytest.LogCaptureFixture

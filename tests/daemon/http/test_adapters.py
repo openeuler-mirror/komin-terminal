@@ -161,3 +161,86 @@ def test_network_error_retried_then_mapped(fake_openai_transport: _TransportFact
         adapter.send(_client(httpx.MockTransport(handler)), _request())
 
     assert sleeps == [1.0, 2.0]
+
+
+def test_send_stream_returns_open_response_without_reading_body() -> None:
+    consumed: list[str] = []
+
+    def generate() -> object:
+        consumed.append("c0")
+        yield b'data: {"choices":[{"delta":{"content":"c0"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=generate(), request=request)
+
+    adapter = RetryAdapter(max_retries=1, sleep=_noop_sleep)
+
+    response = adapter.send_stream(_client(httpx.MockTransport(handler)), _request())
+
+    assert response.status_code == 200
+    assert consumed == []
+    assert "data: [DONE]" in list(response.iter_lines())
+    assert consumed == ["c0"]
+    response.close()
+
+
+def test_send_stream_retries_on_5xx_then_success(
+    fake_openai_transport: _TransportFactory,
+) -> None:
+    sleeps: list[float] = []
+    recorded: list[httpx.Request] = []
+    transport = fake_openai_transport(chunks=["ok"], fail_times=2, record=recorded)
+    adapter = RetryAdapter(max_retries=3, backoff_base=1.0, sleep=sleeps.append)
+
+    response = adapter.send_stream(_client(transport), _request())
+
+    assert response.status_code == 200
+    assert len(recorded) == 3
+    assert sleeps == [1.0, 2.0]
+    response.close()
+
+
+def test_send_stream_fourxx_gets_no_retries(
+    fake_openai_transport: _TransportFactory,
+) -> None:
+    sleeps: list[float] = []
+    recorded: list[httpx.Request] = []
+    transport = fake_openai_transport(status=401, record=recorded)
+    adapter = RetryAdapter(max_retries=3, backoff_base=1.0, sleep=sleeps.append)
+
+    with pytest.raises(AuthenticationError):
+        adapter.send_stream(_client(transport), _request())
+
+    assert len(recorded) == 1
+    assert sleeps == []
+
+
+def test_send_stream_retry_exhaustion_raises_mapped_error(
+    fake_openai_transport: _TransportFactory,
+) -> None:
+    sleeps: list[float] = []
+    recorded: list[httpx.Request] = []
+    transport = fake_openai_transport(status=429, record=recorded)
+    adapter = RetryAdapter(max_retries=3, backoff_base=1.0, sleep=sleeps.append)
+
+    with pytest.raises(RateLimitError) as excinfo:
+        adapter.send_stream(_client(transport), _request())
+
+    assert len(recorded) == 4
+    assert sleeps == [1.0, 2.0, 4.0]
+    assert excinfo.value.status_code == 429
+
+
+def test_send_stream_network_error_retried_then_mapped() -> None:
+    sleeps: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    adapter = RetryAdapter(max_retries=2, backoff_base=1.0, sleep=sleeps.append)
+
+    with pytest.raises(NetworkError):
+        adapter.send_stream(_client(httpx.MockTransport(handler)), _request())
+
+    assert sleeps == [1.0, 2.0]

@@ -7,6 +7,7 @@ the daemon never sees third-party exceptions.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 
@@ -124,6 +125,47 @@ class RetryAdapter:
                 raise self._mapped_status_error(request, candidate)
             self._sleep(self._backoff_base * (2**attempt))
         raise AssertionError("unreachable: retry loop always returns or raises")
+
+    def send_stream(self, client: httpx.Client, request: httpx.Request) -> httpx.Response:
+        """Send ``request`` and hand back an open streaming response.
+
+        The response is opened with ``stream=True`` so only headers are read
+        before returning; retry decisions happen on the established response
+        status, never on body data. Once the returned stream is being read,
+        no further retries happen — mid-stream failures are the caller's to
+        map. The caller owns the response and must close it.
+
+        Args:
+            client: The transport to send through.
+            request: The fully built request.
+
+        Returns:
+            The open successful response (HTTP < 400), body not yet read.
+
+        Raises:
+            BackendError: When retries are exhausted or the failure is not
+                retryable.
+        """
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = client.send(request, stream=True)
+            except httpx.HTTPError as exc:
+                if attempt == self._max_retries:
+                    raise map_http_error(exc) from exc
+                self._sleep(self._backoff_base * (2**attempt))
+                continue
+            if response.status_code < 400:
+                return response
+            with contextlib.suppress(httpx.HTTPError):
+                response.read()
+            response.close()
+            if not _is_retryable_status(response.status_code):
+                raise self._mapped_status_error(request, response)
+            if attempt == self._max_retries:
+                raise self._mapped_status_error(request, response)
+            self._sleep(self._backoff_base * (2**attempt))
+        raise AssertionError("unreachable: retry loop always returns or raises")
+
     @staticmethod
     def _mapped_status_error(request: httpx.Request, response: httpx.Response) -> BackendError:
         """Map a received non-success response to a :class:`BackendError`."""
