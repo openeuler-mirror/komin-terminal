@@ -72,13 +72,22 @@ class SSEParser:
             payload: The JSON payload after the ``data:`` prefix.
 
         Returns:
-            The chunk text, ``""`` when the delta has no content, or ``None``
-            when the payload is malformed or missing required structure.
+            The chunk text, ``""`` when the chunk carries no content (empty
+            or missing delta, or an empty ``choices`` list such as a trailing
+            usage-only chunk), or ``None`` when the payload is malformed.
         """
         try:
             obj = json.loads(payload)
-            delta = obj["choices"][0]["delta"]
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError, AttributeError):
+            choices = obj["choices"]
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            return None
+        if not isinstance(choices, list):
+            return None
+        if not choices:
+            return ""
+        try:
+            delta = choices[0]["delta"]
+        except (KeyError, IndexError, TypeError, AttributeError):
             return None
         if not isinstance(delta, dict):
             return None

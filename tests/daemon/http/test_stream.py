@@ -78,6 +78,18 @@ def test_missing_choices_yields_error() -> None:
     assert [e.kind for e in events] == ["error", "done"]
 
 
+def test_empty_choices_usage_chunk_is_skipped() -> None:
+    lines = [
+        'data: {"choices": [{"delta": {"content": "ok"}}]}',
+        'data: {"choices": [], "usage": {"total_tokens": 5}}',
+        "",
+        "data: [DONE]",
+    ]
+    events = list(SSEParser().parse(lines))
+
+    assert [e.kind for e in events] == ["chunk", "done"]
+    assert events[0].content == "ok"
+
 def test_delta_without_content_is_skipped() -> None:
     lines = [
         'data: {"choices": [{"delta": {"role": "assistant"}}]}',

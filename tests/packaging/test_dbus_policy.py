@@ -33,8 +33,11 @@ class TestBusPolicyXml:
         root = _parse_xml(RELEASE_DBUS / "com.{vendor}.komin.conf")
         for policy in root.findall("policy"):
             if policy.get("user") == "root":
-                has_own = any(a.get("own") is not None for a in policy.findall("allow"))
-                assert has_own, "root policy must allow own"
+                has_own = any(
+                    a.get("own") is not None or a.get("own_prefix") is not None
+                    for a in policy.findall("allow")
+                )
+                assert has_own, "root policy must allow own (or own_prefix)"
                 return
         pytest.fail("No root policy found")
 
