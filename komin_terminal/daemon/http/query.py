@@ -99,9 +99,15 @@ class QueryExecutor:
     def ask_stream(self, query: ChatQuery) -> Iterator[StreamEvent]:
         """Run a streaming chat completion, yielding SSE events.
 
-        The request goes through the retry adapter; once the response stream
-        is being read, no further retries happen and mid-stream transport
-        failures surface as :class:`BackendError` subclasses.
+        The request goes through the retry adapter in streaming mode: only
+        headers are read before the first event can flow, so chunks are
+        delivered progressively as the backend produces them. Once the
+        response stream is being read, no further retries happen and
+        mid-stream transport failures surface as :class:`BackendError`
+        subclasses.
+
+        The underlying response is always closed when the stream ends,
+        fails or is abandoned by the consumer.
 
         Args:
             query: The query to send.
@@ -116,7 +122,7 @@ class QueryExecutor:
         request = self._build_request(query)
         start = time.monotonic()
         try:
-            response = self._retry.send(self._client, request)
+            response = self._retry.send_stream(self._client, request)
         except BackendError as exc:
             self._audit(query, exc.status_code, time.monotonic() - start)
             raise
@@ -126,6 +132,8 @@ class QueryExecutor:
             yield from parser.parse_response(response)
         except httpx.HTTPError as exc:
             raise map_http_error(exc) from exc
+        finally:
+            response.close()
 
     def _build_request(self, query: ChatQuery) -> httpx.Request:
         """Build the POST request for a query.
