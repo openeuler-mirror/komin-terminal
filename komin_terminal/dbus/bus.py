@@ -9,6 +9,8 @@ real system bus.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, NoReturn, Protocol
@@ -175,7 +177,55 @@ def _build_introspection_xml(spec: InterfaceSpec) -> str:
     return "\n".join(lines)
 
 
-def _make_dispatch_method(target: object, python_name: str) -> Callable[..., Any]:
+def _native_to_variant(value: Any) -> Any:
+    """Wrap one Python scalar in a GLib variant for ``a{sv}`` transport.
+
+    Args:
+        value: A bool, int, float or str structure field value.
+
+    Returns:
+        The matching GLib variant.
+
+    Raises:
+        TypeError: For unsupported value types.
+    """
+    from gi.repository import GLib  # noqa: PLC0415 - deferred by design
+
+    if isinstance(value, bool):
+        return GLib.Variant("b", value)
+    if isinstance(value, int):
+        return GLib.Variant("x", value)
+    if isinstance(value, float):
+        return GLib.Variant("d", value)
+    if isinstance(value, str):
+        return GLib.Variant("s", value)
+    raise TypeError(f"unsupported structure value type: {type(value).__name__}")
+
+
+def _structure_to_dbus(value: Any) -> Any:
+    """Convert plain structure data into the GLib variant wire shape.
+
+    GLib builds ``a{sv}`` values from lists of ``(key, variant)`` pairs, not
+    from plain dicts, so every dict returned by an interface method must be
+    reshaped before dasbus serializes the reply. Nested lists are converted
+    recursively; every other value passes through unchanged.
+
+    Args:
+        value: The method return value (dict, list of dicts, or scalar).
+
+    Returns:
+        The wire-shape equivalent of ``value``.
+    """
+    if isinstance(value, dict):
+        return [(str(key), _native_to_variant(item)) for key, item in value.items()]
+    if isinstance(value, (list, tuple)):
+        return [_structure_to_dbus(item) for item in value]
+    return value
+
+
+def _make_dispatch_method(
+    target: object, python_name: str, out_signature: str | None
+) -> Callable[..., Any]:
     """Build one adapter method forwarding a D-Bus call to ``target``.
 
     The generated method accepts the D-Bus parameters positionally and the
@@ -184,6 +234,8 @@ def _make_dispatch_method(target: object, python_name: str) -> Callable[..., Any
     Args:
         target: The plain interface object implementing ``python_name``.
         python_name: Method name on ``target``.
+        out_signature: D-Bus return signature; structure replies (``a{sv}``)
+            are reshaped to the GLib wire format.
 
     Returns:
         The adapter method.
@@ -192,7 +244,10 @@ def _make_dispatch_method(target: object, python_name: str) -> Callable[..., Any
     def method(self: Any, *args: Any, call_info: Mapping[str, Any]) -> Any:
         del self
         caller = str(call_info.get("sender", ""))
-        return getattr(target, python_name)(*args, caller=caller)
+        result = getattr(target, python_name)(*args, caller=caller)
+        if out_signature and "{sv}" in out_signature:
+            result = _structure_to_dbus(result)
+        return result
 
     setattr(method, "__dbus_handler_accepts_additional_arguments__", True)  # noqa: B010
     return method
@@ -213,7 +268,9 @@ def _build_adapter(target: object, spec: InterfaceSpec) -> Any:
 
     members: dict[str, Any] = {"__dbus_xml__": _build_introspection_xml(spec)}
     for method_spec in spec.methods:
-        members[method_spec.name] = _make_dispatch_method(target, method_spec.python_name)
+        members[method_spec.name] = _make_dispatch_method(
+            target, method_spec.python_name, method_spec.out_signature
+        )
     for signal_spec in spec.signals:
         members[signal_spec.name] = Signal()
     adapter_class = type(f"DBusAdapter_{spec.interface_name.replace('.', '_')}", (), members)
@@ -273,6 +330,30 @@ def _map_client_error(error: BaseException) -> NoReturn:
     raise DBusCommunicationError(f"D-Bus call failed: {error}") from error
 
 
+def _dbus_to_native(value: Any) -> Any:
+    """Recursively convert a D-Bus reply into plain Python values.
+
+    dasbus unwraps only the outermost variant of a reply, so ``a{sv}``
+    structures arrive as dicts whose values are still ``GLib.Variant``
+    objects. This helper unpacks every nested variant so callers only ever
+    see native types.
+
+    Args:
+        value: The reply value, possibly containing GLib variants.
+
+    Returns:
+        The fully unpacked native equivalent of ``value``.
+    """
+    from gi.repository import GLib  # noqa: PLC0415 - deferred by design
+
+    if isinstance(value, GLib.Variant):
+        return _dbus_to_native(value.unpack())
+    if isinstance(value, dict):
+        return {key: _dbus_to_native(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_dbus_to_native(item) for item in value]
+    return value
+
 class _RemoteProxy:
     """Wrap a dasbus proxy so every call maps errors into komin exceptions."""
 
@@ -288,7 +369,7 @@ class _RemoteProxy:
 
         def call(*args: Any) -> Any:
             try:
-                return member(*args)
+                return _dbus_to_native(member(*args))
             except Exception as exc:  # noqa: BLE001 - boundary mapping
                 _map_client_error(exc)
 
@@ -350,6 +431,8 @@ class SystemBusBackend:
         self._subscriptions: list[int] = []
         self._disconnected = False
         self._loop: Any = None
+        self._dispatch_loop: Any = None
+        self._dispatch_thread: threading.Thread | None = None
 
     def run_forever(self) -> None:
         """Run the GLib main loop so bus method calls are dispatched.
@@ -411,8 +494,12 @@ class SystemBusBackend:
         self._handlers.append(handler)
 
     def request_name(self, name: str) -> None:
-        """Acquire a well-known bus name."""
-        self._bus.request_name(name)
+        """Acquire a well-known bus name.
+
+        dasbus exposes name acquisition as ``register_service``; the
+        abstraction keeps the ``request_name`` wording of the protocol.
+        """
+        self._bus.register_service(name)
 
     def get_proxy(self, name: str, path: str) -> Any:
         """Return an error-mapping proxy for a remote object."""
@@ -456,6 +543,30 @@ class SystemBusBackend:
             parameters = GLib.Variant.new_tuple(*(_to_variant(value) for value in args))
         self._bus.connection.emit_signal(None, path, interface, member, parameters)
 
+    def _ensure_dispatch_loop(self) -> None:
+        """Start a background GLib loop so signal callbacks are dispatched.
+
+        GLib delivers subscribed signal callbacks only while a main loop
+        iterates the connection's context. The daemon runs
+        :meth:`run_forever` on its main thread; client processes (the CLI)
+        have no such loop, so one is started on a daemon thread the first
+        time a subscription is made. Idempotent.
+        """
+        if self._dispatch_thread is not None or self._loop is not None:
+            return
+        from gi.repository import GLib  # noqa: PLC0415 - deferred by design
+
+        loop = GLib.MainLoop()
+        self._dispatch_loop = loop
+        thread = threading.Thread(
+            target=loop.run, daemon=True, name="komin-dbus-dispatch"
+        )
+        self._dispatch_thread = thread
+        thread.start()
+        deadline = time.monotonic() + 2.0
+        while not loop.is_running() and time.monotonic() < deadline:
+            time.sleep(0.005)
+
     def subscribe_signal(
         self,
         path: str,
@@ -464,6 +575,7 @@ class SystemBusBackend:
         callback: Callable[..., None],
     ) -> None:
         """Subscribe to a signal; the callback receives the unwrapped arguments."""
+        self._ensure_dispatch_loop()
 
         def _on_signal(
             connection: Any,
@@ -490,6 +602,12 @@ class SystemBusBackend:
             return
         self._disconnected = True
         self._quit_loop()
+        if self._dispatch_loop is not None:
+            self._dispatch_loop.quit()
+            self._dispatch_loop = None
+        if self._dispatch_thread is not None:
+            self._dispatch_thread.join(timeout=1.0)
+            self._dispatch_thread = None
         for subscription in self._subscriptions:
             self._bus.connection.signal_unsubscribe(subscription)
         self._subscriptions.clear()
