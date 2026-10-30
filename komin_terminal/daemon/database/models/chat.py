@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Column, String, Text
+from sqlalchemy.orm import Mapped
 
-from komin_terminal.daemon.database.models.base import BaseModel
+from komin_terminal.daemon.database.models.base import GUID, BaseModel
 
 
 class ChatModel(BaseModel):
@@ -22,7 +22,7 @@ class ChatModel(BaseModel):
 
     __tablename__ = "chat"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(index=True)
-    name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str] = mapped_column(Text, default="")
-    model: Mapped[str] = mapped_column(String(255), default="")
+    user_id: Mapped[uuid.UUID] = Column(GUID(), index=True)
+    name: Mapped[str] = Column(String(255))
+    description: Mapped[str] = Column(Text, default="")
+    model: Mapped[str] = Column(String(255), default="")
