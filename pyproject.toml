@@ -15,7 +15,6 @@ dependencies = [
     "SQLAlchemy>=1.4.45,<2.0",
     "PyYAML>=6.0",
     "markdown>=3.5",
-    "pyte>=0.8",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +52,7 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["dasbus.*", "gi.*", "pyte.*"]
+module = ["dasbus.*", "gi.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
