@@ -14,7 +14,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
-from sqlalchemy import ColumnElement, Select, func, select
+from sqlalchemy import func, select
+from sqlalchemy.sql.expression import ColumnElement, Select
 
 from komin_terminal.daemon.database.manager import DatabaseManager
 from komin_terminal.daemon.database.models.base import BaseModel

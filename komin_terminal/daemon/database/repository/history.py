@@ -7,7 +7,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import ColumnElement, Select, or_, select
+from sqlalchemy import or_, select
+from sqlalchemy.sql.expression import ColumnElement, Select
 
 from komin_terminal.daemon.database.models import HistoryModel, InteractionModel
 from komin_terminal.daemon.database.repository.base import BaseRepository

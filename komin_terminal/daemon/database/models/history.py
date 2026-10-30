@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped
 
-from komin_terminal.daemon.database.models.base import BaseModel
+from komin_terminal.daemon.database.models.base import GUID, BaseModel
 
 
 class HistoryModel(BaseModel):
@@ -21,8 +21,8 @@ class HistoryModel(BaseModel):
 
     __tablename__ = "history"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(index=True)
-    chat_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat.id"), default=None)
+    user_id: Mapped[uuid.UUID] = Column(GUID(), index=True)
+    chat_id: Mapped[uuid.UUID | None] = Column(GUID(), ForeignKey("chat.id"), default=None)
 
 
 class InteractionModel(BaseModel):
@@ -41,8 +41,8 @@ class InteractionModel(BaseModel):
 
     __tablename__ = "interaction"
 
-    history_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("history.id"), index=True)
-    question: Mapped[str] = mapped_column(Text)
-    response: Mapped[str] = mapped_column(Text, default="")
-    model: Mapped[str] = mapped_column(String(255), default="")
-    tokens_used: Mapped[int] = mapped_column(default=0)
+    history_id: Mapped[uuid.UUID] = Column(GUID(), ForeignKey("history.id"), index=True)
+    question: Mapped[str] = Column(Text)
+    response: Mapped[str] = Column(Text, default="")
+    model: Mapped[str] = Column(String(255), default="")
+    tokens_used: Mapped[int] = Column(Integer, default=0)

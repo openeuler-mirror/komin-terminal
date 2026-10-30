@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
+from sqlalchemy.sql.expression import Select
 
 from komin_terminal.daemon.database.models import ChatModel
 from komin_terminal.daemon.database.repository.base import BaseRepository
@@ -27,7 +29,7 @@ class ChatRepository(BaseRepository[ChatModel]):
         """
         stmt: Select[tuple[ChatModel]] = self._base_query().where(ChatModel.name == name)
         with self._manager.session() as session:
-            return session.scalar(stmt)
+            return cast("ChatModel | None", session.scalar(stmt))
 
     def get_owner(self, chat_id: uuid.UUID) -> uuid.UUID | None:
         """Return the owner of a chat regardless of the caller's user.
@@ -47,4 +49,4 @@ class ChatRepository(BaseRepository[ChatModel]):
             ChatModel.id == chat_id, ChatModel.deleted_at.is_(None)
         )
         with self._manager.session() as session:
-            return session.scalar(stmt)
+            return cast("uuid.UUID | None", session.scalar(stmt))
