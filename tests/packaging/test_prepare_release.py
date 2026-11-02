@@ -104,6 +104,37 @@ class TestVendorValidation:
         assert not _validate_vendor(vendor), f"Expected invalid: {vendor}"
 
 
+class TestVendorNormalization:
+    """Tests for raw vendor normalization (e.g. %{_vendor} = openEuler)."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("openEuler", "openeuler"),
+            ("ACME", "acme"),
+            ("  Fedora  ", "fedora"),
+            ("My-Company", "my-company"),
+            ("acme", "acme"),
+        ],
+    )
+    def test_normalize_vendor(self, raw: str, expected: str) -> None:
+        from scripts.prepare_release import normalize_vendor
+
+        assert normalize_vendor(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["openEuler", "ACME", "My-Company", "  Fedora  "])
+    def test_normalized_vendor_passes_validation(self, raw: str) -> None:
+        from scripts.prepare_release import _validate_vendor, normalize_vendor
+
+        assert _validate_vendor(normalize_vendor(raw))
+
+    @pytest.mark.parametrize("raw", ["has space", "-leading", "trailing-", "_under"])
+    def test_unfixable_vendor_stays_invalid(self, raw: str) -> None:
+        from scripts.prepare_release import _validate_vendor, normalize_vendor
+
+        assert not _validate_vendor(normalize_vendor(raw))
+
+
 class TestCLI:
     """Integration tests for the CLI entry point."""
 
@@ -132,6 +163,16 @@ class TestCLI:
         )
         assert result.returncode != 0
         assert "invalid" in result.stderr.lower()
+
+    def test_uppercase_vendor_normalized_and_substituted(self, tmp_path: Path) -> None:
+        (tmp_path / "test.conf").write_text("BusName=com.{vendor}.komin\n")
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--root", str(tmp_path), "--vendor", "openEuler"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "com.openeuler.komin" in (tmp_path / "test.conf").read_text()
 
     def test_dry_run_with_vendor(self, tmp_path: Path) -> None:
         (tmp_path / "test.conf").write_text("com.{vendor}.komin\n")

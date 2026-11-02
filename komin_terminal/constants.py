@@ -30,6 +30,14 @@ ENV_DBUS_VENDOR: str = "KOMIN_DBUS_VENDOR"
 SYSTEM_PROMPT: str = "You are a helpful Linux system administration assistant."
 DEFAULT_USER_AGENT: str = f"komin-terminal/{__version__}"
 
+# Release builds: scripts/prepare_release.py replaces the vendor token in the
+# next assignment with the distribution vendor. The comparison placeholder is
+# built by concatenation so the release substitution leaves it untouched,
+# letting the unsubstituted source tree keep the development default.
+_VENDOR_TOKEN = "{vendor}"
+_VENDOR_PLACEHOLDER = "{" + "vendor" + "}"
+DEFAULT_DBUS_VENDOR = "example" if _VENDOR_TOKEN == _VENDOR_PLACEHOLDER else _VENDOR_TOKEN
+
 
 def get_dbus_vendor() -> str:
     """Return the D-Bus vendor segment.
@@ -44,7 +52,7 @@ def get_dbus_vendor() -> str:
     vendor = os.environ.get(ENV_DBUS_VENDOR)
     if vendor:
         return vendor
-    return "example"
+    return DEFAULT_DBUS_VENDOR
 
 
 def get_dbus_chat_namespace() -> str:
@@ -86,8 +94,8 @@ def _dbus_object_path(service: str) -> str:
     Returns:
         Object path in the form ``/com/<vendor>/komin/<service>``.
     """
-    vendor = get_dbus_vendor().replace("-", "_")
-    return f"/com/{vendor}/komin/{service}"
+    segment = get_dbus_vendor().replace("-", "_")
+    return f"/com/{segment}/komin/{service}"
 
 
 def get_dbus_object_path_chat() -> str:

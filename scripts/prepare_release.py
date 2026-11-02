@@ -1,9 +1,18 @@
 """Replace {vendor} placeholders in text files for release builds.
 
-This script is invoked during ``%build`` in the RPM spec. It recursively
-scans the repository root, replacing every literal ``{vendor}`` in text
-files with the RPM ``%{_vendor}`` macro value. Binary files are silently
-skipped.
+This script is invoked during ``%build`` in the RPM spec. By default it
+recursively scans ``data/release/`` (the deployment templates), replacing
+every literal ``{vendor}`` in text files with the RPM ``%{_vendor}`` macro
+value. Binary files are silently skipped. Source code and tests are
+deliberately out of scope: Python f-strings such as
+``f"/com/{vendor}/komin/..."`` use the same brace syntax and must not be
+rewritten; pass ``--root`` to substitute a different tree explicitly.
+
+Distribution vendor macros are not guaranteed to be valid D-Bus segments
+(openEuler's ``%{_vendor}`` is ``openEuler``), so the raw value is first
+normalized: surrounding whitespace is stripped and the remainder is
+lowercased. Values that are still invalid after normalization are
+rejected.
 
 Usage::
 
@@ -62,6 +71,19 @@ def substitute_vendor(
     return modified
 
 
+def normalize_vendor(vendor: str) -> str:
+    """Normalize a raw vendor identifier into D-Bus segment form.
+
+    Args:
+        vendor: Raw vendor string, e.g. the value of ``%{_vendor}``.
+
+    Returns:
+        The stripped, lowercased vendor; it may still fail validation
+        (see :func:`_validate_vendor`).
+    """
+    return vendor.strip().lower()
+
+
 def _validate_vendor(vendor: str) -> bool:
     """Return ``True`` if *vendor* is a valid D-Bus segment."""
     return bool(_VENDOR_PATTERN.match(vendor))
@@ -108,16 +130,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Error: --vendor is required", file=sys.stderr)
         return 1
 
+    vendor = normalize_vendor(vendor)
+
     if not _validate_vendor(vendor):
         print(
-            f"Error: invalid vendor {vendor!r} (must be lowercase alphanumeric/hyphens)",
+            f"Error: invalid vendor {vendor!r} "
+            "(must be alphanumeric/hyphens after lowercasing)",
             file=sys.stderr,
         )
         return 1
 
     if root is None:
-        # Detect repo root from this script's location.
-        root = Path(__file__).resolve().parent.parent
+        # Default scope: the release deployment templates only (see the
+        # module docstring for why source/tests are excluded).
+        root = Path(__file__).resolve().parent.parent / "data" / "release"
 
     modified = substitute_vendor(root, vendor, dry_run=dry_run)
     if modified:
