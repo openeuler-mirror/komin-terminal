@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pytest
@@ -103,6 +104,21 @@ def test_unknown_option_exits_2() -> None:
     """Unknown argument errors surface argparse's exit code 2."""
     with pytest.raises(SystemExit) as excinfo:
         cli_module.main(["--bogus"])
+    assert excinfo.value.code == 2
+
+
+def test_bare_km_on_tty_without_pipe_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``km`` with no arguments and a tty stdin keeps the usage error."""
+
+    class _TtyStdin:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(sys, "stdin", _TtyStdin())
+    with pytest.raises(SystemExit) as excinfo:
+        cli_module.main([])
     assert excinfo.value.code == 2
 
 

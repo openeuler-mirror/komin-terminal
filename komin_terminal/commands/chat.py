@@ -244,6 +244,13 @@ def run_chat(
         return _run_interactive(args, client, renderers, renderer, spinner_enabled)
     question = " ".join(args.question).strip()
     if not question:
+        # No explicit question: fall back to piped stdin as the question
+        # (``echo ... | km``). Reading it here also consumes stdin, so
+        # _compose_question will not re-append it as a context block.
+        pipe_text = read_pipe_input()
+        if pipe_text:
+            question = pipe_text.strip()
+    if not question:
         renderers.error(_MISSING_QUESTION_MESSAGE)
         return 1
     composed = _compose_question(question, args.attachments or [])
