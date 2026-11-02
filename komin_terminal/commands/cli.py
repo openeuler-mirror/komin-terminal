@@ -133,6 +133,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _stdin_is_piped() -> bool:
+    """Return ``True`` when stdin is redirected (pipe or file)."""
+    try:
+        return not sys.stdin.isatty()
+    except (AttributeError, OSError, ValueError):
+        return True
+
+
 def _normalize_command_line(args: list[str]) -> list[str]:
     """Route bare invocations (``km "question"``) into the chat subcommand.
 
@@ -141,9 +149,13 @@ def _normalize_command_line(args: list[str]) -> list[str]:
 
     Returns:
         Normalized arguments: every run without an explicit subcommand is
-        rewritten as a ``chat`` invocation.
+        rewritten as a ``chat`` invocation. An empty argument list with
+        piped stdin also becomes ``chat`` so the piped text can serve as
+        the question (``echo ... | km``).
     """
     if not args:
+        if _stdin_is_piped():
+            return ["chat"]
         return args
     if args[0] in ("-h", "--help", "--version") or args[0] in _SUBCOMMAND_MODULES:
         return args

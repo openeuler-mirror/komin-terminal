@@ -35,6 +35,17 @@ def test_pipe_input_merges_into_question(
     assert "ps aux 输出" in question
 
 
+def test_pipe_only_becomes_question(
+    cli_main: Any, fake_client: FakeKominClient, stdin_pipe: Any
+) -> None:
+    """``echo ... | km`` without a question uses the piped text as the question."""
+    stdin_pipe("你好")
+    code = cli_main([])
+    assert code == 0
+    question = fake_client.chat.ask_calls[0]["question"]
+    assert question == "你好"
+    assert "[管道输入]" not in question
+
 def test_attachments_good_oversized_and_missing(
     cli_main: Any,
     fake_client: FakeKominClient,
