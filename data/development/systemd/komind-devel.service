@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=dbus
-BusName=com.{vendor}.komin
+BusName=com.{vendor}.komin.chat
 ExecStart=/usr/bin/komind
 Restart=on-failure
 RestartSec=5s
