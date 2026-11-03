@@ -23,7 +23,7 @@ class TestSpecFile:
     def test_contains_three_subpackages(self) -> None:
         content = SPEC_PATH.read_text()
         assert "%package data" in content
-        assert "%package doc" in content
+        assert "%package help" in content
 
     def test_requires_python3(self) -> None:
         content = SPEC_PATH.read_text()
@@ -50,12 +50,12 @@ class TestSpecFile:
         assert "prepare_release.py" in content
         assert "--vendor %{_vendor}" in content
 
-    def test_check_runs_make_test(self) -> None:
+    def test_check_runs_offline_pytest(self) -> None:
         content = SPEC_PATH.read_text()
-        # Find the %check section and verify it contains make test
         check_match = re.search(r"%check\n(.*?)(?=\n%|\n$|\Z)", content, re.DOTALL)
         assert check_match, "%check section not found"
-        assert "make test" in check_match.group(1)
+        check_body = check_match.group(1)
+        assert "python3 -m pytest" in check_body
 
     def test_config_is_noreplace(self) -> None:
         content = SPEC_PATH.read_text()
@@ -65,9 +65,9 @@ class TestSpecFile:
         content = SPEC_PATH.read_text()
         assert "%files data" in content
 
-    def test_files_doc_section_exists(self) -> None:
+    def test_files_help_section_exists(self) -> None:
         content = SPEC_PATH.read_text()
-        assert "%files doc" in content
+        assert "%files help" in content
 
     def test_post_scriptlet_enables_tmpfiles(self) -> None:
         content = SPEC_PATH.read_text()
@@ -75,7 +75,7 @@ class TestSpecFile:
 
     def test_post_scriptlet_reloads_dbus(self) -> None:
         content = SPEC_PATH.read_text()
-        assert "busctl daemon-reload" in content
+        assert "systemctl reload dbus.service" in content
 
 
 class TestManPages:
