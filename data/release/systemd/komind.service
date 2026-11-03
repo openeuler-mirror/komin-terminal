@@ -5,12 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=dbus
-BusName=com.{vendor}.komin
+BusName=com.{vendor}.komin.chat
 ExecStart=/usr/bin/komind
 Restart=on-failure
 RestartSec=5s
 User=root
 Group=root
+# Inject the release vendor so the daemon requests the packaged D-Bus
+# names (com.<vendor>.komin.*); substituted by prepare_release.py.
+Environment=KOMIN_DBUS_VENDOR={vendor}
 
 [Install]
 WantedBy=multi-user.target
